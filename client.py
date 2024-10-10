@@ -1,4 +1,4 @@
-# Client code (client.py) for Asymmetric Ciphers - RSA, ElGamal, ECC
+# Client code (client.py)
 import socket
 
 def main():
@@ -6,13 +6,18 @@ def main():
     client.connect(("127.0.0.1", 9999))
     
     # Get user input for command and message
-    command = input("Enter command (RSA, ELGAMAL, ECC): ")
+    command = input("Enter command (CAESAR, PLAYFAIR, HILL, VIGENERE, RAILFENCE, ROWTRANSPOSITION): ")
     message = input("Enter message to encrypt: ")
     
-    # Send command and message to server
-    client.send(f"{command}|{message}".encode())
-    encrypted_message = client.recv(4096).decode()
-    print(f"Encrypted message: {encrypted_message}")  # Encrypted message from server
+    # Send command to server
+    client.send(command.encode())
+    response = client.recv(1024).decode()
+    print(response)  # Prompt from server for message
+    
+    # Send message to server
+    client.send(message.encode())
+    encrypted_message = client.recv(1024).decode()
+    print(encrypted_message)  # Encrypted message from server
     
     client.close()
 
