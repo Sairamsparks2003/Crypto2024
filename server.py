@@ -1,148 +1,54 @@
-# Server code (server.py)
+# Server code (server.py) for Asymmetric Ciphers - RSA, ElGamal, ECC
 import socket
-import numpy as np
-import string
+from Crypto.PublicKey import RSA, ECC
+from Crypto.Cipher import PKCS1_OAEP
+from Crypto.Signature import DSS
+from Crypto.Hash import SHA256
+from Crypto.Random import get_random_bytes
+from Crypto.Cipher import ElGamal
+from Crypto.Util.number import bytes_to_long, long_to_bytes
+import base64
 
-# Helper functions for ciphers
-def caesar_cipher_encrypt(plaintext, key):
-    ciphertext = ""
-    for char in plaintext:
-        if char.isalpha():
-            shift = 65 if char.isupper() else 97
-            ciphertext += chr((ord(char) + key - shift) % 26 + shift)
-        else:
-            ciphertext += char
-    return ciphertext
+# Helper functions for asymmetric ciphers
+def rsa_encrypt(plaintext):
+    key = RSA.generate(2048)
+    public_key = key.publickey()
+    cipher = PKCS1_OAEP.new(public_key)
+    ciphertext = cipher.encrypt(plaintext.encode())
+    return base64.b64encode(ciphertext).decode()
 
-def playfair_cipher_encrypt(plaintext, key):
-    # Implementation of Playfair cipher encryption
-    # For simplicity, assume key is a 5x5 matrix of letters without 'J'
-    matrix = create_playfair_matrix(key)
-    plaintext_pairs = create_playfair_pairs(plaintext)
-    ciphertext = ""
-    for a, b in plaintext_pairs:
-        a_row, a_col = find_position(matrix, a)
-        b_row, b_col = find_position(matrix, b)
-        if a_row == b_row:
-            ciphertext += matrix[a_row][(a_col + 1) % 5] + matrix[b_row][(b_col + 1) % 5]
-        elif a_col == b_col:
-            ciphertext += matrix[(a_row + 1) % 5][a_col] + matrix[(b_row + 1) % 5][b_col]
-        else:
-            ciphertext += matrix[a_row][b_col] + matrix[b_row][a_col]
-    return ciphertext
+def elgamal_encrypt(plaintext):
+    key = ElGamal.generate(2048, get_random_bytes)
+    public_key = key.publickey()
+    plaintext_bytes = bytes_to_long(plaintext.encode())
+    k = get_random_bytes(32)  # Random value for encryption
+    ciphertext = public_key.encrypt(plaintext_bytes, k)
+    return base64.b64encode(long_to_bytes(ciphertext[0]) + long_to_bytes(ciphertext[1])).decode()
 
-def create_playfair_matrix(key):
-    key = "".join(dict.fromkeys(key.upper().replace('J', 'I') + string.ascii_uppercase.replace('J', '')))
-    matrix = [list(key[i:i+5]) for i in range(0, 25, 5)]
-    return matrix
-
-def create_playfair_pairs(plaintext):
-    plaintext = plaintext.upper().replace('J', 'I')
-    pairs = []
-    i = 0
-    while i < len(plaintext):
-        a = plaintext[i]
-        b = plaintext[i + 1] if i + 1 < len(plaintext) else 'X'
-        if a == b:
-            pairs.append((a, 'X'))
-            i += 1
-        else:
-            pairs.append((a, b))
-            i += 2
-    return pairs
-
-def find_position(matrix, char):
-    for row in range(5):
-        for col in range(5):
-            if matrix[row][col] == char:
-                return row, col
-    return None, None
-
-def hill_cipher_encrypt(plaintext, key_matrix):
-    # Convert plaintext into vector form
-    plaintext = plaintext.upper().replace(" ", "")
-    if len(plaintext) % 2 != 0:
-        plaintext += 'X'
-    plaintext_vector = [ord(char) - 65 for char in plaintext]
-    
-    # Encryption
-    ciphertext = ""
-    for i in range(0, len(plaintext_vector), 2):
-        vector = np.array(plaintext_vector[i:i+2]).reshape(2, 1)
-        encrypted_vector = np.dot(key_matrix, vector) % 26
-        ciphertext += chr(encrypted_vector[0][0] + 65) + chr(encrypted_vector[1][0] + 65)
-    return ciphertext
-
-def vigenere_cipher_encrypt(plaintext, key):
-    key = key.upper()
-    ciphertext = ""
-    key_length = len(key)
-    for i, char in enumerate(plaintext):
-        if char.isalpha():
-            shift = 65 if char.isupper() else 97
-            key_char = key[i % key_length]
-            key_shift = ord(key_char) - 65
-            ciphertext += chr((ord(char) + key_shift - shift) % 26 + shift)
-        else:
-            ciphertext += char
-    return ciphertext
-
-def rail_fence_cipher_encrypt(plaintext, num_rails):
-    rail = [[] for _ in range(num_rails)]
-    direction_down = False
-    row, col = 0, 0
-    
-    for char in plaintext:
-        rail[row].append(char)
-        if row == 0 or row == num_rails - 1:
-            direction_down = not direction_down
-        row += 1 if direction_down else -1
-    
-    ciphertext = ""
-    for r in rail:
-        ciphertext += "".join(r)
-    return ciphertext
-
-def row_transposition_cipher_encrypt(plaintext, key):
-    key_order = sorted(list(enumerate(key)), key=lambda x: x[1])
-    key_indices = [i for i, _ in key_order]
-    num_cols = len(key)
-    num_rows = len(plaintext) // num_cols + (len(plaintext) % num_cols != 0)
-    
-    grid = [['' for _ in range(num_cols)] for _ in range(num_rows)]
-    for i, char in enumerate(plaintext):
-        grid[i // num_cols][i % num_cols] = char
-    
-    ciphertext = ""
-    for col_index in key_indices:
-        for row in grid:
-            if row[col_index]:
-                ciphertext += row[col_index]
-    return ciphertext
+def ecc_encrypt(plaintext):
+    key = ECC.generate(curve='P-256')
+    public_key = key.public_key()
+    h = SHA256.new(plaintext.encode())
+    signer = DSS.new(key, 'fips-186-3')
+    signature = signer.sign(h)
+    return base64.b64encode(signature).decode()
 
 def handle_client_connection(client_socket):
-    client_socket.send(b"Enter command (CAESAR, PLAYFAIR, HILL, VIGENERE, RAILFENCE, ROWTRANSPOSITION): ")
-    command = client_socket.recv(1024).decode().strip()
-    client_socket.send(b"Enter message to encrypt: ")
-    message = client_socket.recv(1024).decode().strip()
+    request = client_socket.recv(1024).decode()
+    print(f"Received: {request}")
     
-    if command == "CAESAR":
-        encrypted_message = caesar_cipher_encrypt(message, 3)  # Example key for Caesar Cipher
-    elif command == "PLAYFAIR":
-        encrypted_message = playfair_cipher_encrypt(message, "KEYWORD")  # Example key for Playfair Cipher
-    elif command == "HILL":
-        key_matrix = np.array([[3, 3], [2, 5]])  # Example key matrix for Hill Cipher
-        encrypted_message = hill_cipher_encrypt(message, key_matrix)
-    elif command == "VIGENERE":
-        encrypted_message = vigenere_cipher_encrypt(message, "KEYWORD")  # Example key for Vigenere Cipher
-    elif command == "RAILFENCE":
-        encrypted_message = rail_fence_cipher_encrypt(message, 3)  # Example number of rails for Rail Fence Cipher
-    elif command == "ROWTRANSPOSITION":
-        encrypted_message = row_transposition_cipher_encrypt(message, "4312")  # Example key for Row Transposition Cipher
+    command, message = request.split('|')
+    
+    if command == "RSA":
+        encrypted_message = rsa_encrypt(message)
+    elif command == "ELGAMAL":
+        encrypted_message = elgamal_encrypt(message)
+    elif command == "ECC":
+        encrypted_message = ecc_encrypt(message)
     else:
         encrypted_message = "Invalid command"
 
-    client_socket.send(f"Encrypted message: {encrypted_message}".encode())
+    client_socket.send(encrypted_message.encode())
     client_socket.close()
 
 def main():
